@@ -1,8 +1,14 @@
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.math.BigDecimal;
 import java.sql.*;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Locale;
 
 public class QueryBuilder
 {
@@ -23,30 +29,9 @@ public class QueryBuilder
     /**
      * Generic constructor.
      */
-    public QueryBuilder(String className)
+    public QueryBuilder(Connection connection, String className)
     {
         super();
-        try
-        {
-
-            String databaseName = "postgres";
-            String host = "postgres82322.c0rmfsc1zrep.us-east-2.rds.amazonaws.com";
-            int port = 5432;
-            url = "jdbc:postgresql://" + host + ":" + port + "/" + databaseName;
-
-            String databaseUser = "postgres";
-            String databasePassword = "password1234";
-            connection = DriverManager.getConnection(url, databaseUser, databasePassword);
-             System.out.println("Connection Success!");
-        } catch (SQLException e) {
-            // TODO Auto-generated catch block
-            System.out.println("Connection Failure: " + url);
-            e.printStackTrace();
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        this.sql = "";
         this.columns = "";
         this.fromTable = "";
         this.whereClause = "";
@@ -57,6 +42,7 @@ public class QueryBuilder
         this.whereColumnValues = new ArrayList<>();
         this.columnType = new ArrayList<>();
         this.className = className;
+        this.connection = connection;
     }
 
     public boolean isWhereClauseSet()
@@ -284,12 +270,18 @@ public class QueryBuilder
             objectArrayList = new ArrayList<>();
             while(resultSet.next())
             {
-                Class annotatedClass = Class.forName(this.className);
-                Object obj = new User();
-                Constructor constructors[] = annotatedClass.getConstructors();
-
-                System.out.println(annotatedClass);
+                Class<?> annotatedClass = Class.forName(this.className);
                 Field[] fields = annotatedClass.getDeclaredFields();
+                Object obj = null;
+                Constructor constructors[] = annotatedClass.getConstructors();
+                for(Constructor constructor : constructors)
+                {
+                    if(constructor.getParameterCount() == 0)
+                    {
+                        obj = constructor.newInstance();
+                    }
+                }
+                System.out.println(annotatedClass);
                 for(Field field : fields)
                 {
                     field.setAccessible(true);
@@ -298,17 +290,54 @@ public class QueryBuilder
                     {
                         String[] annotationParts = annotation.toString().split(", ");
                         String[] pairs = annotationParts[3].split("=");
-                        field.set(obj, resultSet.getObject(pairs[1].replace("\"", "")));
+                        String resultSetKey = pairs[1].replace("\"", "");
+                        String type = field.getType().toString();
+                        switch(type)
+                        {
+                            case "int":
+                                field.set(obj, resultSet.getInt(resultSetKey));
+                                break;
+                            case "double":
+                                try
+                                {
+                                    field.set(obj, (Double) resultSet.getObject(resultSetKey));
+                                }
+                                catch (Exception e)
+                                {
+                                    // Might be money format
+                                    Object originalValue = (String) resultSet.getString(resultSetKey);
+                                    BigDecimal bigDecimal = QueryBuilder.parseCurrencyColumn(originalValue.toString(), Locale.US);
+                                    field.set(obj, bigDecimal.doubleValue());
+                                }
+                                break;
+                            case "String":
+                                field.set(obj, resultSet.getString(resultSetKey));
+                                break;
+                            default:
+                                field.set(obj, resultSet.getObject(resultSetKey));
+                                break;
+                        }
                     }
                 }
                 System.out.println(obj.toString());
                 objectArrayList.add(obj);
             }
         }
-        catch (SQLException | ClassNotFoundException | IllegalAccessException e)
+        catch (SQLException | ClassNotFoundException | IllegalAccessException | InvocationTargetException | InstantiationException | ParseException e)
         {
             e.printStackTrace();
         }
         return objectArrayList;
+    }
+
+
+    private static BigDecimal parseCurrencyColumn(String amount, Locale locale) throws ParseException
+    {
+        NumberFormat format = NumberFormat.getNumberInstance(locale);
+        if (format instanceof DecimalFormat)
+        {
+            ((DecimalFormat) format).setParseBigDecimal(true);
+        }
+        return (BigDecimal) format.parse(amount.replaceAll("[^\\d.,]",""));
     }
 }
