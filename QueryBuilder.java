@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
-// Alter column syntax : Alter table tableName Alter column columnName TYPE type
 public class QueryBuilder
 {
     private final Connection connection;
@@ -25,10 +24,11 @@ public class QueryBuilder
     private String limitClause;
     private ArrayList<Object> whereColumnValues;
     private ArrayList<String> columnType;
-    private String className;
+    private final String className;
     private HashMap<String, Object> updateFields;
     private String queryType;
     private ResultSetMetaData resultSetMetaData;
+    private ResultSet resultSet;
 
 
     /**
@@ -167,6 +167,16 @@ public class QueryBuilder
         this.resultSetMetaData = resultSetMetaData;
     }
 
+    public String getLimitClause()
+    {
+        return limitClause;
+    }
+
+    public void setLimitClause(String limitClause)
+    {
+        this.limitClause = limitClause;
+    }
+
     /**
      * This allows you get columns separated by a comma.
      * @param columns CSV list of columns. * to get all columns.
@@ -288,6 +298,68 @@ public class QueryBuilder
     {
         setQueryType("insert");
         setFromTable(table);
+        return this;
+    }
+
+    /**
+     * Sets the table for a delete query
+     * @param table The name of the table.
+     * @return QueryBuilder
+     */
+    public QueryBuilder deleteTable(String table)
+    {
+        setQueryType("delete");
+        setFromTable(table);
+        return this;
+    }
+
+    /**
+     * Sets the table you are changing the structure of.
+     * @param table The name of the table
+     * @return QueryBuilder
+     */
+    public QueryBuilder alterTable(String table)
+    {
+        setQueryType("alter");
+        setFromTable(table);
+        return this;
+    }
+
+    /**
+     * Change a column's definition.
+     * @param columnName The name of the column.
+     * @param columnType The type of the column.
+     * @return QueryBuilder
+     */
+    public QueryBuilder alterColumn(String columnName, String columnType)
+    {
+        setQueryType("alterColumn");
+        setColumn(columnName, columnType);
+        return this;
+    }
+
+    /**
+     * This adds a column to the table.
+     * @param columnName The name of the column.
+     * @param columnType The type of the column.
+     * @return QueryBuilder
+     */
+    public QueryBuilder addColumn(String columnName, String columnType)
+    {
+        setQueryType("addColumn");
+       setColumn(columnName, columnType);
+       return this;
+    }
+
+    /**
+     * Drops a column from the table.
+     * @param columnName The name of the column.
+     * @return QueryBuilder
+     */
+    public QueryBuilder dropColumn(String columnName)
+    {
+        setQueryType("dropColumn");
+        setColumn(columnName, columnName);
         return this;
     }
 
@@ -416,6 +488,12 @@ public class QueryBuilder
         return this;
     }
 
+    public QueryBuilder limit(int numRecords)
+    {
+        setLimitClause(" LIMIT " + numRecords);
+        return this;
+    }
+
     public void viewSQL()
     {
         switch (this.queryType)
@@ -438,6 +516,52 @@ public class QueryBuilder
         System.out.println("SQL: " + sql);
     }
 
+    private int alterColumnQuery() throws SQLException
+    {
+        // Alter column syntax : Alter table tableName Alter column columnName TYPE type
+        sql = "ALTER TABLE " + getFromTable();
+        String comma = "";
+        for(String column : getUpdateFields().keySet())
+        {
+            sql += comma + " ALTER column \"" + column + "\" TYPE " + column + getUpdateFields().get(column);
+        }
+        setSql(sql);
+        PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        preparedStatement.execute();
+        return 0;
+    }
+
+    private int addColumnQuery() throws SQLException
+    {
+        // Alter column syntax : Alter table tableName Alter column columnName TYPE type
+        sql = "ALTER TABLE " + getFromTable();
+        String comma = "";
+        int x = 1;
+
+        for(String column : getUpdateFields().keySet())
+        {
+            sql += comma + " ADD column " + "\"" + column + "\" " + (String) getUpdateFields().get(column);
+        }
+        setSql(sql);
+        PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        preparedStatement.execute();
+        return 0;
+    }
+
+    private int dropColumnQuery() throws SQLException
+    {
+        // Alter column syntax : Alter table tableName Alter column columnName TYPE type
+        sql = "ALTER TABLE " + getFromTable();
+        String comma = "";
+        for(String column : getUpdateFields().keySet())
+        {
+            sql += comma + " DROP column \"" + column + "\"";
+        }
+        setSql(sql);
+        PreparedStatement preparedStatement = connection.prepareStatement(sql);
+        preparedStatement.execute();
+        return 0;
+    }
 
     /**
      * This performs operations on a database that are not of the select variety.
@@ -459,6 +583,15 @@ public class QueryBuilder
                 case "delete":
                     deleteQuery();
                     break;
+                case "alterColumn":
+                    alterColumnQuery();
+                    return 0;
+                case "addColumn":
+                    addColumnQuery();
+                    return 0;
+                case "dropColumn":
+                    dropColumnQuery();
+                    return 0;
                 case "select":
                     throw new Exception("Must call executeQuery for select statements.");
                 default:
@@ -466,19 +599,38 @@ public class QueryBuilder
             }
             PreparedStatement preparedStatement = this.connection.prepareStatement(sql);
             int x = 1;
+            Class annotatedClass = Class.forName(this.className);
+            Field[] fields = annotatedClass.getDeclaredFields();
+            HashMap<String, String> fieldMap = new HashMap<>();
+            for(Field field : fields)
+            {
+                fieldMap.put(field.getName().toString(), field.getType().toString());
+            }
+
             for(String key : updateFields.keySet())
             {
+                String fieldType = "";
+                String value = "";
                 try
                 {
-                    preparedStatement.setObject(x, this.updateFields.get(key));
+                    fieldType = fieldMap.get(key);
+                    value = (String) this.updateFields.get(key);
+                    switch(fieldType)
+                    {
+                        case "int":
+                            preparedStatement.setInt(x, Integer.parseInt(value));
+                            break;
+                        case "double":
+                            preparedStatement.setDouble(x, Double.parseDouble(value));
+                            break;
+                        default:
+                            preparedStatement.setObject(x, this.updateFields.get(key));
+                    }
                 }
                 catch (Exception e)
                 {
                     // Currency fixing.
-                    String myNumberFormat = NumberFormat.getCurrencyInstance(Locale.US).format(this.updateFields.get(x));
-                    System.out.println(myNumberFormat);
-                    //Number newNumber = myNumberFormat.parse((String) this.updateFields.get(key));
-                    preparedStatement.setString(x, myNumberFormat);
+                    preparedStatement.setObject(x, this.updateFields.get(key));
                 }
                 ++x;
             }
@@ -521,12 +673,6 @@ public class QueryBuilder
             }
             ResultSet resultSet = preparedStatement.executeQuery();
             ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
-            int columnCount = resultSetMetaData.getColumnCount();
-            ArrayList<String> columnNames = new ArrayList<>();
-            for(int i = 1; i <= columnCount; i++)
-            {
-                columnNames.add(resultSetMetaData.getColumnName(i));
-            }
             objectArrayList = new ArrayList<>();
             while(resultSet.next())
             {
@@ -541,7 +687,6 @@ public class QueryBuilder
                         obj = constructor.newInstance();
                     }
                 }
-                System.out.println(annotatedClass);
                 for(Field field : fields)
                 {
                     field.setAccessible(true);
@@ -560,7 +705,7 @@ public class QueryBuilder
                             case "double":
                                 try
                                 {
-                                    field.set(obj, (Double) resultSet.getObject(resultSetKey));
+                                    field.set(obj, resultSet.getObject(resultSetKey));
                                 }
                                 catch (Exception e)
                                 {
@@ -580,7 +725,6 @@ public class QueryBuilder
                     }
                 }
                 assert obj != null;
-                System.out.println(obj.toString());
                 objectArrayList.add(obj);
             }
         }
@@ -591,6 +735,36 @@ public class QueryBuilder
         return objectArrayList;
     }
 
+
+    /**
+     * Retrieves just a single record
+     * @return Object
+     */
+    public Object getOne()
+    {
+        ArrayList<Object> arrayList = (ArrayList<Object>) executeQuery();
+        return arrayList.get(0);
+    }
+
+    /**
+     * Retrieves a single record starting at record offset.
+     * @param offset The number of the record to start from.
+     * @return Object
+     */
+    public Object getOne(int offset)
+    {
+        ArrayList<Object> arrayList = (ArrayList<Object>) executeQuery();
+        try
+        {
+            return arrayList.get(offset);
+        }
+        catch (Exception e)
+        {
+            // They got too high of index
+            int maxIndex = arrayList.size() - 1;
+            return arrayList.get(maxIndex);
+        }
+    }
 
     private static BigDecimal parseCurrencyColumn(String amount, Locale locale) throws ParseException
     {
