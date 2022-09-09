@@ -16,4 +16,6 @@ to use the Query Builder.
 When you create a QueryBuilder object, you will pass in the connection object and
 the name of the class you are mapping to. Once you create the QueryBuilder object,
 the rest of the methods return a QueryBuilder object so you can chain them. Call
-the executeQuery method to perform any queries that should return result sets.
+the executeQuery method to perform any queries that should return result sets. If
+you only need a single result, you can use the getOne method instead. Call executeOperation 
+for any queries that do not return result sets.
