@@ -693,14 +693,13 @@ public class QueryBuilder
                 for(Field field : fields)
                 {
                     field.setAccessible(true);
-                    System.out.println("Field: " + field.getName());
                     try
                     {
                     	field.set(obj, resultSet.getObject(field.getName()));
                     }
                     catch(Exception e)
                     {
-                        System.out.println("Failed Field: " + field.getName());
+                    	e.printStackTrace();
                     }
                 }
                // assert obj != null;
