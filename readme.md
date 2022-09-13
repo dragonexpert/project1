@@ -14,7 +14,7 @@ createNewConnection method which will return a Connection object. Now you are re
 to use the Query Builder.
 
 When you create a QueryBuilder object, you will pass in the connection object and
-the name of the class you are mapping to. Once you create the QueryBuilder object,
+the name of the class you are mapping to. You may need to use package.className for it to work. Once you create the QueryBuilder object,
 the rest of the methods return a QueryBuilder object so you can chain them. Call
 the executeQuery method to perform any queries that should return result sets. If
 you only need a single result, you can use the getOne method instead. Call executeOperation 
