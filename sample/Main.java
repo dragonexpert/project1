@@ -5,7 +5,7 @@ public class Main
 {
     public static void main(String[] args) throws Exception
     {
-        ConnectionFactory connectionFactory = new ConnectionFactory("postgres82322.c0rmfsc1zrep.us-east-2.rds.amazonaws.com", "postgres", 5432, "postgres", "password1234");
+        ConnectionFactory connectionFactory = new ConnectionFactory("HOST", "databaseName", "port", "databaseUser", "password");
         Connection connection = connectionFactory.createNewConnection();
 
         // Generate a list example
